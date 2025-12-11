@@ -102,35 +102,32 @@ class CIFAR10_GoogLeNet(nn.Module):
         self.b1 = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1), # input: 3 output: 64
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1) # output: (batch_size, 64, 64, 64)
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1) # output: (batch_size, 64, 16, 16)
         )
         self.b2 = nn.Sequential(
             nn.Conv2d(in_channels=64, out_channels=64, kernel_size=1), # input: 64 output: 64
             nn.ReLU(),
             nn.Conv2d(in_channels=64, out_channels=192, kernel_size=3, padding=1), # input: 64 output: 192
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1) # output: (batch_size, 192, 32, 32)
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1) # output: (batch_size, 192, 8, 8)
         )
         self.b3 = nn.Sequential(
             Inception(192, 64, (96, 128), (16, 32), 32), # input: 192 output: 64 + 128 + 32 + 32 = 256
-            Inception(256, 128, (128, 192), (32, 96), 64), # input: 256 output: 128 + 192 + 96 + 64 = 480
-            nn.MaxPool2d(kernel_size=3, stride=1, padding=1) # output: (batch_size, 480, 32, 32)
+            Inception(256, 128, (128, 192), (32, 64), 64), # input: 256 output: 128 + 192 + 64 + 64 = 448
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1) # output: (batch_size, 448, 4, 4)
         )
         self.b4 = nn.Sequential(
-            Inception(480, 192, (96, 208), (16, 48), 64), # input: 480 output: 192 + 208 + 48 + 64 = 512
+            Inception(448, 192, (96, 208), (16, 48), 64), # input: 448 output: 192 + 208 + 48 + 64 = 512
             Inception(512, 160, (112, 224), (24, 64), 64), # input: 512 output: 160 + 224 + 64 + 64 = 512
-            Inception(512, 128, (128, 256), (24, 64), 64), # input: 512 output: 128 + 256 + 64 + 64 = 512
-            Inception(512, 112, (144, 288), (32, 64), 64), # input: 512 output: 112 + 288 + 64 + 64 = 528
-            Inception(528, 256, (160, 320), (32, 128), 128), # input: 528 output: 256 + 320 + 128 + 128 = 832
-            nn.MaxPool2d(kernel_size=3, stride=1, padding=1) # output: (batch_size, 832, 32, 32)
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1) # output: (batch_size, 512, 2, 2)
         )
         self.b5 = nn.Sequential(
-            Inception(832, 256, (160, 320), (32, 128), 128), # input: 832 output: 256 + 320 + 128 + 128 = 832
-            Inception(832, 384, (192, 384), (48, 128), 128), # input: 832 output: 384 + 384 + 128 + 128 = 1024
+            Inception(512, 128, (128, 256), (24, 64), 64), # input: 512 output: 128 + 256 + 64 + 64 = 512
+            Inception(512, 256, (160, 320), (32, 128), 128), # input: 512 output: 256 + 320 + 128 + 128 = 832
             nn.AdaptiveAvgPool2d((1, 1)),                    # output: (batch_size, 1024, 1, 1)(相当于1x1图片)
             nn.Flatten()
         )
-        self.fc = nn.Linear(1024, 10)
+        self.fc = nn.Linear(832, 10)
     def forward(self, x):
         x = self.b1(x)
         x = self.b2(x)

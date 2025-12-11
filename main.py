@@ -8,7 +8,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 batch_size = 64
-lr = 0.01
+lr = 0.001
 num_epochs = 10
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"

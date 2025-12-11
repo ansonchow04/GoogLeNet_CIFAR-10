@@ -1,3 +1,4 @@
+from re import X
 import torch
 import os
 import numpy as np
@@ -9,7 +10,9 @@ from torch.utils.data import DataLoader, TensorDataset
 
 batch_size = 64
 lr = 0.001
-num_epochs = 10
+num_epochs = 100
+patience = 10
+valid_split = 0.1
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
@@ -34,6 +37,13 @@ for i in range(1, 6):
 train_data = np.vstack(train_data) # shape: (50000, 3072)
 train_labels = np.hstack(train_labels) # shape: (50000,)
 
+# Split into training and validation sets
+num_train = int((1 - valid_split) * train_data.shape[0])
+valid_data = train_data[num_train:] # shape: (45000, 3072)
+valid_labels = train_labels[num_train:] # shape: (5000,)
+train_data = train_data[:num_train] # shape: (45000, 3072)
+train_labels = train_labels[:num_train] # shape: (45000,)
+
 # Load test data
 test_data = []
 test_labels = []
@@ -45,13 +55,17 @@ test_data = np.vstack(test_data) # shape: (10000, 3072)
 test_labels = np.hstack(test_labels) # shape: (10000,)
 
 # Preprocess data: reshape and normalize
-train_data = train_data.reshape(50000, 3, 32, 32) / 255.0
+train_data = train_data.reshape(45000, 3, 32, 32) / 255.0
+valid_data = valid_data.reshape(5000, 3, 32, 32) / 255.0
 test_data = test_data.reshape(10000, 3, 32, 32) / 255.0
 X_train = torch.tensor(train_data, dtype=torch.float32)
 y_train = torch.tensor(train_labels, dtype=torch.long)
+X_valid = torch.tensor(valid_data, dtype=torch.float32)
+y_valid = torch.tensor(valid_labels, dtype=torch.long)
 X_test = torch.tensor(test_data, dtype=torch.float32)
 y_test = torch.tensor(test_labels, dtype=torch.long)
 train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True)
+valid_loader = DataLoader(TensorDataset(X_valid, y_valid), batch_size=batch_size, shuffle=False)
 test_loader = DataLoader(TensorDataset(X_test, y_test), batch_size=batch_size, shuffle=False)
 
 # # Visualize an example image from the training data
@@ -143,20 +157,56 @@ model = CIFAR10_GoogLeNet().to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-# Training loop
+# early stopping variables
+best_valid_loss = float('inf')
+best_model_state = None
+epochs_without_improvement = 0
+
+# Training loop with early stopping
 for epoch in range(num_epochs):
     model.train()
-    running_loss = 0
-    for X_batch, y_batch in tqdm(train_loader):
+    train_loss = 0
+    for X_batch, y_batch in tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs} - Training'):
         X_batch, y_batch = X_batch.to(device), y_batch.to(device)
         optimizer.zero_grad()
         logits = model(X_batch)
         loss = criterion(logits, y_batch)
         loss.backward()
         optimizer.step()
-        running_loss += loss.item()
-    print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}')
+        train_loss += loss.item()
+    avg_train_loss = train_loss / len(train_loader)
+    
+    model.eval()
+    valid_loss = 0
+    valid_correct = 0
+    valid_total = 0
+    with torch.no_grad():
+        for X_batch, y_batch in valid_loader:
+            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+            logits = model(X_batch)
+            loss = criterion(logits, y_batch)
+            valid_loss += loss.item()
+            preds = torch.argmax(logits, dim=1)
+            valid_correct += (preds == y_batch).sum().item()
+            valid_total += y_batch.size(0)
+    avg_valid_loss = valid_loss / len(valid_loader)
+    valid_acc = 100 * valid_correct / valid_total
+    print(f'Epoch [{epoch+1}/{num_epochs}], Train Loss: {avg_train_loss:.4f}, Valid Loss: {avg_valid_loss:.4f}, Valid Acc: {valid_acc:.2f}%')
+    
+    if avg_valid_loss < best_valid_loss:
+        best_valid_loss = avg_valid_loss
+        best_model_state = model.state_dict().copy()
+        epochs_without_improvement = 0
+    else:
+        epochs_without_improvement += 1
+    if epochs_without_improvement >= patience:
+        print(f'\nEarly stop.')
+        break
 
+if best_model_state is not None:
+    model.load_state_dict(best_model_state)
+
+# Final evaluation on test set
 model.eval()
 correct, total = 0, 0
 with torch.no_grad():
@@ -166,4 +216,4 @@ with torch.no_grad():
         preds = torch.argmax(logits, dim=1)
         correct += (preds == y_batch).sum().item()
         total += y_batch.size(0)
-print(f'Test Accuracy: {100 * correct / total:.2f}%')
+print(f'\nFinal Accuracy: {100 * correct / total:.2f}%')
